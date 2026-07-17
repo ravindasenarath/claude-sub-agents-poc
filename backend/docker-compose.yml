@@ -1,0 +1,18 @@
+# Local development dependency only (not used in CI/tests - see
+# application.yml: Hikari's initialization-fail-timeout lets the app start
+# without a reachable DB). Matches the default DB_* env vars in
+# src/main/resources/application.yml.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: plp
+      POSTGRES_USER: plp
+      POSTGRES_PASSWORD: plp
+    ports:
+      - "5432:5432"
+    volumes:
+      - plp-db-data:/var/lib/postgresql/data
+
+volumes:
+  plp-db-data:

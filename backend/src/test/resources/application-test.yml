@@ -1,0 +1,13 @@
+# Keep the test suite fast when no local PostgreSQL is running: fail fast
+# on connection attempts instead of waiting out the full production
+# connection-timeout (see application.yml).
+spring:
+  datasource:
+    hikari:
+      connection-timeout: 1000
+
+logging:
+  level:
+    root: WARN
+    com.plp.platform: INFO
+    org.springframework.boot.actuate: WARN
