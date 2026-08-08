@@ -17,14 +17,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>No live PostgreSQL instance is required for these tests - the
  * Hikari-backed {@code DataSource} bean is created eagerly, but a
  * connection is only requested lazily on first use (see
- * {@code application.yml}: {@code initialization-fail-timeout: -1}). The
- * health endpoint still responds; its {@code db} component simply reports
- * whatever the environment's DB reachability actually is.
+ * {@code application.yml}: {@code initialization-fail-timeout: -1}).
+ * {@code application-test.yml} additionally disables the actuator
+ * {@code db} health indicator, so the overall health status this test
+ * asserts on is deterministic (always {@code UP}) rather than a function
+ * of whatever PostgreSQL happens to be reachable in the environment the
+ * tests run in.
  *
  * <p>{@code application-test.yml} (activated via the {@code test} profile)
- * only quiets logging - it must stay a profile-specific file rather than a
- * second {@code application.yml}, otherwise it would shadow (not merge
- * with) {@code src/main/resources/application.yml} on the test classpath.
+ * must stay a profile-specific file rather than a second
+ * {@code application.yml}, otherwise it would shadow (not merge with)
+ * {@code src/main/resources/application.yml} on the test classpath.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -45,7 +48,7 @@ class PlatformApplicationTests {
         ResponseEntity<String> response =
                 restTemplate.getForEntity("http://localhost:" + port + "/actuator/health", String.class);
 
-        assertThat(response.getStatusCode()).isIn(HttpStatus.OK, HttpStatus.SERVICE_UNAVAILABLE);
-        assertThat(response.getBody()).contains("status");
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).contains("\"status\":\"UP\"");
     }
 }

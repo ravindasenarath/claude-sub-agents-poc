@@ -6,8 +6,9 @@
  * in this package - enforced by
  * {@code com.plp.platform.architecture.ModuleBoundaryTest} (ArchUnit).
  *
- * <p>Empty in this scaffolding task; see the {@code search} package Javadoc
- * for a flagged open question about this module's read access to the
- * {@code listing} table once the DB schema/migrations task lands.
+ * <p>Empty in this scaffolding task. Per the {@code search} package Javadoc,
+ * this package composes results via {@link com.plp.platform.listing.api}'s
+ * query port and must never issue SQL against the {@code listing} table
+ * itself once the DB schema/migrations task lands.
  */
 package com.plp.platform.search.internal;

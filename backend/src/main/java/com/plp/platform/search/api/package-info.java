@@ -6,7 +6,7 @@
  * listings) must go through this package - no ad-hoc queries in
  * {@code publicapi} (module-boundaries.md, rule 5).
  *
- * <p>{@link com.plp.platform.search.api.SearchModuleApi} is a scaffolding
+ * <p>{@link com.plp.platform.search.api.SearchService} is a scaffolding
  * marker only.
  */
 package com.plp.platform.search.api;

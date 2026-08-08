@@ -59,9 +59,16 @@ class ModuleBoundaryTest {
     }
 
     private static ArchRule rule(String internalPackage, String owningModulePackage) {
+        // onlyHaveDependentClassesThat (rather than onlyBeAccessed()) is
+        // deliberate: onlyBeAccessed() only inspects method/constructor
+        // calls and field access, so a class outside the module that merely
+        // holds an `internal` type as a field/parameter/return type (a
+        // type-level dependency, no member access) would slip through.
+        // onlyHaveDependentClassesThat() checks all dependency kinds.
         return classes()
                 .that().resideInAPackage(internalPackage)
-                .should().onlyBeAccessed().byAnyPackage(owningModulePackage);
+                .should().onlyHaveDependentClassesThat()
+                .resideInAnyPackage(owningModulePackage);
     }
 
     // ---------------------------------------------------------------
@@ -152,6 +159,31 @@ class ModuleBoundaryTest {
                 .should().dependOnClassesThat()
                 .resideInAnyPackage(
                         "..agent..", "..listing..", "..media..", "..search..", "..publicapi..", "..agentapi..")
+                .check(CLASSES);
+    }
+
+    // ---------------------------------------------------------------
+    // JDBC confinement: DB access must stay inside each module's
+    // `internal` layer. This is the mechanical enforcement point ahead
+    // of the DB schema/migrations task - nothing in a module's `api`
+    // package or either HTTP surface may talk to JDBC/SQL directly.
+    // ---------------------------------------------------------------
+
+    @Test
+    void onlyModuleInternalsMayDependOnJdbcOrSql() {
+        noClasses()
+                .that().resideOutsideOfPackage("..internal..")
+                .should().dependOnClassesThat()
+                .resideInAnyPackage("org.springframework.jdbc..", "javax.sql..", "java.sql..")
+                .check(CLASSES);
+    }
+
+    @Test
+    void publicApiAndAgentApiNeverDependOnJdbcOrSql() {
+        noClasses()
+                .that().resideInAnyPackage("..publicapi..", "..agentapi..")
+                .should().dependOnClassesThat()
+                .resideInAnyPackage("org.springframework.jdbc..", "javax.sql..", "java.sql..")
                 .check(CLASSES);
     }
 }

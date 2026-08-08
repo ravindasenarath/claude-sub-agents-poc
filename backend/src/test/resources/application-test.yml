@@ -6,6 +6,18 @@ spring:
     hikari:
       connection-timeout: 1000
 
+management:
+  health:
+    # This scaffolding wires up no schema/entities yet (see application.yml),
+    # so the `db` health indicator's status is a function of whatever
+    # PostgreSQL happens to be reachable in the environment the tests run
+    # in, not of anything this test suite is asserting about. Disabling it
+    # here keeps healthEndpointIsUp asserting a real, deterministic
+    # green/red signal (overall status UP) rather than depending on a live
+    # DB - PlatformApplicationTests must not require Postgres to pass.
+    db:
+      enabled: false
+
 logging:
   level:
     root: WARN

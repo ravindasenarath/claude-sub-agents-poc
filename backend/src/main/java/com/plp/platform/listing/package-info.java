@@ -10,7 +10,11 @@
  * <p>Allowed dependencies: {@link com.plp.platform.agent.api} (agent
  * lookups) and {@link com.plp.platform.media.api} (enqueuing image cleanup
  * on delete/withdraw, ADR-0003). Must never depend on {@code search},
- * {@code publicapi}, or {@code agentapi}.
+ * {@code publicapi}, or {@code agentapi} - though {@code search} is itself
+ * a caller of {@link com.plp.platform.listing.api}: it may not query this
+ * module's table directly, only via the published
+ * {@link com.plp.platform.listing.api.ListingModuleApi#findPublished}
+ * read port.
  *
  * <p>Published interface: {@link com.plp.platform.listing.api}.
  * Implementation detail: {@link com.plp.platform.listing.internal}.
