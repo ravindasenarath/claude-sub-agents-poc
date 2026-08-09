@@ -24,10 +24,13 @@ export interface AgentMe {
    * `PENDING_APPROVAL` drives the pending-approval banner + disables
    * publish-related controls (F0.2 scope — see `PendingApprovalBanner`).
    * `ACTIVE` may publish. `DISABLED` agents are rejected at the `agent-api`
-   * edge per module-boundaries.md — no dedicated UI state for it here since
-   * a disabled agent shouldn't be able to reach an authenticated screen
-   * that renders this in the first place; flagged as a gap if that
-   * assumption turns out wrong once B0.2b lands.
+   * edge per module-boundaries.md — as a `403 AGENT_DISABLED` on the
+   * request itself (see `AgentDisabledError`/`isAgentDisabledError` below,
+   * and `app/agent/layout.tsx`, which handles that 403 explicitly), *not*
+   * as a `200 GET /me` body with this status value. This member is kept for
+   * forward-compatibility only (in case a future contract ever does return
+   * it in a `200` body) — it's currently unreachable by construction here,
+   * so don't rely on `status === "DISABLED"` ever being observed.
    */
   status: "PENDING_APPROVAL" | "ACTIVE" | "DISABLED";
 }
@@ -40,3 +43,18 @@ export interface AgentNotApprovedError {
 
 export const AGENT_NOT_APPROVED_MESSAGE =
   "Your account is pending approval. Publishing listings is disabled until an administrator approves your agent account.";
+
+/**
+ * Error body shape for the `403` a disabled agent's otherwise-valid session
+ * gets rejected with — including on `GET /me` itself, which is why
+ * `status: "DISABLED"` above is unreachable in a successful response (see
+ * `app/agent/layout.tsx`'s `loadAgentProfile`, from the parallel B0.2b
+ * backend task).
+ */
+export interface AgentDisabledError {
+  code: "AGENT_DISABLED";
+  message?: string;
+}
+
+export const AGENT_DISABLED_MESSAGE =
+  "Your agent account has been disabled. Contact an administrator if you believe this is a mistake.";

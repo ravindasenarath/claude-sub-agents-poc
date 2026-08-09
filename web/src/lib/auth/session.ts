@@ -22,7 +22,19 @@ import {
  * ADR-0002's token-transport amendment). Browser JS never sees these fields.
  */
 export interface SessionPayload {
-  /** OIDC subject id (ADR-0002's `auth_subject`). */
+  /**
+   * OIDC subject id (ADR-0002's `auth_subject`).
+   *
+   * WARNING — informational only, NOT verified: this is decoded from the
+   * id_token's payload segment without signature verification against the
+   * IdP's JWKS (see `oidc-client.ts`'s `decodeSubClaim` for the full
+   * rationale). It is safe today only because nothing in the frontend uses
+   * `sub` as an authorization input — the BFF proxy never checks it, and the
+   * backend independently re-derives identity from the JWKS-verified bearer
+   * token on every request. If that ever changes (e.g. this field starts
+   * gating a frontend decision), verify the id_token's signature against the
+   * IdP's JWKS first — do not treat this value as trusted.
+   */
   sub: string;
   accessToken: string;
   refreshToken: string;

@@ -1,7 +1,12 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { passesCsrfChecks } from "@/lib/auth/csrf";
-import { applySessionCookie, getSessionFromRequest, refreshSessionIfNeeded } from "@/lib/auth/session";
+import {
+  applySessionCookie,
+  clearSessionCookie,
+  getSessionFromRequest,
+  refreshSessionIfNeeded,
+} from "@/lib/auth/session";
 import { isAgentApiMockEnabled, agentApiServerBaseUrl } from "@/lib/api/server-config";
 import { getDevMockAgentMe } from "@/lib/api/agent-me-dev-mock";
 
@@ -18,23 +23,42 @@ import { getDevMockAgentMe } from "@/lib/api/agent-me-dev-mock";
  * - No/expired session → `401 { code: "NO_SESSION" }` (not a redirect: the
  *   caller here is `fetch`, not a browser navigation — navigations to
  *   `/agent/*` itself are guarded by `proxy.ts`).
- * - Forwards method, query string, body, and content-type unchanged, and
- *   streams the backend's response back unchanged.
+ * - Forwards method, query string, body, and an allowlisted subset of
+ *   request headers unchanged, and streams the backend's response back
+ *   unchanged.
+ * - Each path segment is validated (`isSafePathSegment`) and
+ *   percent-encoded before being joined into the forward URL — this is the
+ *   hop that attaches the real bearer token, so it must not trust WHATWG
+ *   `URL`'s `..`-normalization as its only defense against escaping the
+ *   backend's intended path prefix.
+ * - A failed sliding-renewal refresh (revoked/expired refresh token, IdP
+ *   outage) is treated as "no session" (`401 NO_SESSION` + cleared cookie),
+ *   not a raw 500.
  */
 
-// Headers that must never be forwarded as-is between hops.
-const STRIPPED_REQUEST_HEADERS = new Set(["cookie", "host", "content-length", "connection"]);
+// Explicit allowlist of browser-supplied headers forwarded to the backend.
+// Deliberately an allowlist, not a denylist: this is the hop that attaches
+// the real bearer token, so anything not known-safe to forward (e.g.
+// `x-forwarded-for`/`x-real-ip`/`forwarded`, fully attacker-controlled via
+// `fetch`) must be dropped by default rather than passed through unless
+// explicitly excluded.
+const FORWARDED_REQUEST_HEADERS = new Set(["content-type", "accept", "accept-language"]);
 const STRIPPED_RESPONSE_HEADERS = new Set(["set-cookie", "content-encoding", "content-length", "connection"]);
 
 function buildForwardHeaders(request: NextRequest, accessToken: string): Headers {
   const headers = new Headers();
   for (const [key, value] of request.headers.entries()) {
-    if (!STRIPPED_REQUEST_HEADERS.has(key.toLowerCase())) {
+    if (FORWARDED_REQUEST_HEADERS.has(key.toLowerCase())) {
       headers.set(key, value);
     }
   }
   headers.set("authorization", `Bearer ${accessToken}`);
   return headers;
+}
+
+/** Rejects path traversal / segment-smuggling attempts before they reach the credential-attaching fetch below. */
+function isSafePathSegment(segment: string): boolean {
+  return segment !== ".." && segment !== "." && !segment.includes("/");
 }
 
 function buildResponseHeaders(backendResponse: Response): Headers {
@@ -60,10 +84,28 @@ async function handle(
     return NextResponse.json({ code: "NO_SESSION" }, { status: 401 });
   }
 
-  const { session: freshSession, cookieUpdate } = await refreshSessionIfNeeded(session);
-
   const { path } = await params;
-  const targetPath = `/${(path ?? []).join("/")}`;
+  const segments = path ?? [];
+  if (!segments.every(isSafePathSegment)) {
+    return NextResponse.json({ code: "INVALID_PATH" }, { status: 400 });
+  }
+  const targetPath = `/${segments.map(encodeURIComponent).join("/")}`;
+
+  let freshSession: typeof session;
+  let cookieUpdate: Awaited<ReturnType<typeof refreshSessionIfNeeded>>["cookieUpdate"];
+  try {
+    ({ session: freshSession, cookieUpdate } = await refreshSessionIfNeeded(session));
+  } catch {
+    // A revoked/rotated refresh token, IdP outage, or an empty stored
+    // refresh token (see `session.ts`'s `refreshToken ?? ""` default) all
+    // surface here. Treat it the same as "no session" — clearing the cookie
+    // and returning the same `401 NO_SESSION` shape the client already
+    // redirects to `/login` on — rather than letting the throw become a raw
+    // 500 that wedges a "remember me" user for up to 30 days.
+    const response = NextResponse.json({ code: "NO_SESSION" }, { status: 401 });
+    clearSessionCookie(response);
+    return response;
+  }
 
   if (isAgentApiMockEnabled() && targetPath === "/me" && request.method === "GET") {
     const response = NextResponse.json(getDevMockAgentMe());

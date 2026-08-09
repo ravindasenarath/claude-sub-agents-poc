@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/errors";
-import { isAgentNotApprovedError } from "@/lib/api/agent-errors";
+import { isAgentDisabledError, isAgentNotApprovedError } from "@/lib/api/agent-errors";
 
 describe("isAgentNotApprovedError (F0.2)", () => {
   it("matches a 403 ApiError with body.code === AGENT_NOT_APPROVED", () => {
@@ -22,5 +22,28 @@ describe("isAgentNotApprovedError (F0.2)", () => {
     expect(isAgentNotApprovedError(new Error("boom"))).toBe(false);
     expect(isAgentNotApprovedError(null)).toBe(false);
     expect(isAgentNotApprovedError(undefined)).toBe(false);
+  });
+});
+
+describe("isAgentDisabledError (N2, F0.2 review fix)", () => {
+  it("matches a 403 ApiError with body.code === AGENT_DISABLED", () => {
+    const error = new ApiError(403, "Forbidden", { code: "AGENT_DISABLED" });
+    expect(isAgentDisabledError(error)).toBe(true);
+  });
+
+  it("does not match a different 403 error", () => {
+    const error = new ApiError(403, "Forbidden", { code: "AGENT_NOT_APPROVED" });
+    expect(isAgentDisabledError(error)).toBe(false);
+  });
+
+  it("does not match a non-403 ApiError with the same code", () => {
+    const error = new ApiError(401, "Unauthorized", { code: "AGENT_DISABLED" });
+    expect(isAgentDisabledError(error)).toBe(false);
+  });
+
+  it("does not match a plain error / non-ApiError value", () => {
+    expect(isAgentDisabledError(new Error("boom"))).toBe(false);
+    expect(isAgentDisabledError(null)).toBe(false);
+    expect(isAgentDisabledError(undefined)).toBe(false);
   });
 });

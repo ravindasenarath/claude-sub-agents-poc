@@ -162,4 +162,93 @@ describe("BFF agent proxy route (F0.2)", () => {
     expect(body.accessToken).toBeUndefined();
     expect(body.refreshToken).toBeUndefined();
   });
+
+  it("rejects a `..` path segment instead of forwarding it (path escape / B1)", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await callRoute(
+      GET,
+      makeRequest("GET", "/api/agent/actuator/health", { cookie: sessionCookie() }),
+      ["..", "..", "actuator", "health"],
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ code: "INVALID_PATH" });
+    // Never even reaches the point of attaching the bearer token / calling fetch.
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a path segment containing a literal `/` instead of forwarding it (B1)", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    // A segment array element containing its own `/` (e.g. from an
+    // upstream decode of a `%2F`) would otherwise let a single "safe"
+    // segment smuggle extra path structure past a naive join.
+    const response = await callRoute(
+      GET,
+      makeRequest("GET", "/api/agent/listings", { cookie: sessionCookie() }),
+      ["listings", "../../actuator"],
+    );
+
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("percent-encodes forwarded path segments", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await callRoute(
+      GET,
+      makeRequest("GET", "/api/agent/listings/weird%20id", { cookie: sessionCookie() }),
+      ["listings", "weird id"],
+    );
+
+    const [targetUrl] = fetchMock.mock.calls[0];
+    expect(String(targetUrl)).toBe("http://localhost:8080/api/agent/listings/weird%20id");
+  });
+
+  it("returns 401 NO_SESSION (and clears the cookie) instead of a raw 500 when the refresh call fails (B2)", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error("OIDC token refresh failed: 400"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    // Force a refresh: the default `sessionCookie()` uses a long `expiresIn`,
+    // so build one whose access token is already past the refresh window.
+    const response = await callRoute(
+      GET,
+      makeRequest("GET", "/api/agent/listings", { cookie: sessionCookie({ expiresIn: -1 }) }),
+      ["listings"],
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ code: "NO_SESSION" });
+    expect(response.cookies.get(SESSION_COOKIE_NAME)?.value).toBe("");
+  });
+
+  it("only forwards allowlisted request headers, dropping spoofable ones like X-Forwarded-For (B5)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await callRoute(
+      GET,
+      makeRequest("GET", "/api/agent/listings", {
+        cookie: sessionCookie(),
+        headers: {
+          "x-forwarded-for": "1.2.3.4",
+          "x-real-ip": "1.2.3.4",
+          forwarded: "for=1.2.3.4",
+          "content-type": "application/json",
+        },
+      }),
+      ["listings"],
+    );
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers.get("x-forwarded-for")).toBeNull();
+    expect(init.headers.get("x-real-ip")).toBeNull();
+    expect(init.headers.get("forwarded")).toBeNull();
+    expect(init.headers.get("content-type")).toBe("application/json");
+  });
 });

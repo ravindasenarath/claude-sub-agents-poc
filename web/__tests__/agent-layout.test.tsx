@@ -80,4 +80,45 @@ describe("agent/layout.tsx (F0.2)", () => {
     expect(screen.getByRole("link", { name: "Agent Portal" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
   });
+
+  it("shows a clear disabled-account notice on a 403 AGENT_DISABLED from GET /me, instead of a silent blank portal (N2)", async () => {
+    setSessionCookie();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 403,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({ code: "AGENT_DISABLED" }),
+      }),
+    );
+
+    const { default: AgentLayout } = await import("@/app/agent/layout");
+    const element = await AgentLayout({ children: <div>dashboard content</div> });
+    render(element);
+
+    expect(screen.getByText("Account disabled.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
+    expect(screen.queryByText("Account pending approval.")).not.toBeInTheDocument();
+  });
+
+  it("shows a generic error notice (not a silent blank portal) when GET /me fails for any other reason (N2)", async () => {
+    setSessionCookie();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({ code: "INTERNAL_ERROR" }),
+      }),
+    );
+
+    const { default: AgentLayout } = await import("@/app/agent/layout");
+    const element = await AgentLayout({ children: <div>dashboard content</div> });
+    render(element);
+
+    expect(screen.getByText("We couldn't load your account.")).toBeInTheDocument();
+    expect(screen.getByText("dashboard content")).toBeInTheDocument();
+  });
 });

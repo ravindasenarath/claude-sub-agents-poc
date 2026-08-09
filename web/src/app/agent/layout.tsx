@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
 import { AgentHeader } from "@/components/layout/AgentHeader";
 import { PendingApprovalBanner } from "@/components/layout/PendingApprovalBanner";
+import { AccountIssueBanner } from "@/components/layout/AccountIssueBanner";
 import { getSessionForServerComponent, refreshSessionIfNeeded } from "@/lib/auth/session";
 import { createAuthorizedAgentApiClient } from "@/lib/api/agent-api.server";
+import { isAgentDisabledError } from "@/lib/api/agent-errors";
 import type { AgentMe } from "@/lib/api/agent-me";
 
 /**
@@ -22,29 +24,44 @@ import type { AgentMe } from "@/lib/api/agent-me";
  * an auth route, both of which can set cookies.
  */
 export default async function AgentLayout({ children }: { children: ReactNode }) {
-  const agent = await loadAgentProfile();
+  const result = await loadAgentProfile();
+  const agent = result.kind === "ok" ? result.agent : null;
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <AgentHeader agentName={agent?.name ?? null} />
       {agent?.status === "PENDING_APPROVAL" ? <PendingApprovalBanner /> : null}
+      {result.kind === "disabled" ? <AccountIssueBanner variant="disabled" /> : null}
+      {result.kind === "unknown-error" ? <AccountIssueBanner variant="unknown" /> : null}
       <main className="flex-1">{children}</main>
     </div>
   );
 }
 
-async function loadAgentProfile(): Promise<AgentMe | null> {
+type AgentProfileResult =
+  | { kind: "no-session" }
+  | { kind: "ok"; agent: AgentMe }
+  | { kind: "disabled" }
+  | { kind: "unknown-error" };
+
+async function loadAgentProfile(): Promise<AgentProfileResult> {
   const session = await getSessionForServerComponent();
-  if (!session) return null;
+  if (!session) return { kind: "no-session" };
 
   try {
     const { session: fresh } = await refreshSessionIfNeeded(session);
     const client = createAuthorizedAgentApiClient(fresh.accessToken);
-    return await client.get<AgentMe>("/me");
-  } catch {
-    // `GET /api/agent/me` isn't guaranteed to exist yet (mocked for F0.2 —
-    // see `AGENT_API_MOCK`/agent-me-dev-mock.ts); render the shell without a
-    // name rather than failing the whole agent surface.
-    return null;
+    const agent = await client.get<AgentMe>("/me");
+    return { kind: "ok", agent };
+  } catch (error) {
+    // A disabled agent's otherwise-valid session gets a `403 AGENT_DISABLED`
+    // on `GET /me` itself (parallel B0.2b backend task, not yet merged) —
+    // show a clear, explicit notice for that case rather than a silent,
+    // unexplained dead end. Any other failure (5xx, network error, an
+    // `agent-api` that doesn't implement `/me` yet in this environment) is
+    // still not fatal to the whole agent surface, but it's surfaced as a
+    // generic error state instead of being swallowed outright.
+    if (isAgentDisabledError(error)) return { kind: "disabled" };
+    return { kind: "unknown-error" };
   }
 }

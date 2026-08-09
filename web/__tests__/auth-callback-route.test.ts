@@ -94,4 +94,45 @@ describe("GET /api/auth/callback (F0.2)", () => {
     );
     expect(new URL(response.headers.get("location")!).searchParams.get("error")).toBe("auth_failed");
   });
+
+  it("redirects to /login?error=auth_failed instead of minting a session when access_token is missing (B6)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        // No access_token at all.
+        refresh_token: "refresh-1",
+        expires_in: 300,
+        id_token: fakeIdToken("auth0|agent-1"),
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await GET(
+      makeRequest("/api/auth/callback?code=abc&state=state-1", pendingCookie({ state: "state-1" })),
+    );
+
+    expect(new URL(response.headers.get("location")!).pathname).toBe("/login");
+    expect(new URL(response.headers.get("location")!).searchParams.get("error")).toBe("auth_failed");
+    expect(response.cookies.get(SESSION_COOKIE_NAME)).toBeFalsy();
+  });
+
+  it("redirects to /login?error=auth_failed instead of minting a session when id_token/sub is missing (B6)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        access_token: "access-1",
+        refresh_token: "refresh-1",
+        expires_in: 300,
+        // No id_token at all, so `sub` can't be derived.
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await GET(
+      makeRequest("/api/auth/callback?code=abc&state=state-1", pendingCookie({ state: "state-1" })),
+    );
+
+    expect(new URL(response.headers.get("location")!).searchParams.get("error")).toBe("auth_failed");
+    expect(response.cookies.get(SESSION_COOKIE_NAME)).toBeFalsy();
+  });
 });
