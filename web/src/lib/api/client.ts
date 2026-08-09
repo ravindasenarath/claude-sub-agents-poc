@@ -8,16 +8,48 @@ export interface ApiRequestOptions extends Omit<RequestInit, "body" | "method"> 
   /** JSON-serializable request body. */
   body?: unknown;
   /**
-   * Bearer token for `agent-api` requests. Auth/session wiring lands in
-   * F0.2 — until then, callers that need an authenticated request must pass
-   * a token explicitly.
+   * Bearer token to attach as `Authorization: Bearer <token>`.
+   *
+   * Server-only, as of F0.2: the browser never holds an agent-api access
+   * token (see docs/architecture/ADR-0002's token-transport amendment and
+   * module-boundaries.md — the Next server is a BFF proxy for all
+   * `agent-api` traffic). This option exists for the BFF proxy route itself
+   * (`app/api/agent/[...path]/route.ts`) and for Server Components that call
+   * the backend directly via `lib/api/agent-api.server.ts`. Browser-side
+   * callers must never pass this — use `agentApiClient` from
+   * `lib/api/agent-api.ts` instead, which relies on the same-origin session
+   * cookie plus the CSRF header/credentials the proxy requires.
    */
   token?: string;
 }
 
+function appendQueryString(query: ApiQuery | undefined): string {
+  if (!query) return "";
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined) {
+      params.set(key, String(value));
+    }
+  }
+  const serialized = params.toString();
+  return serialized ? `?${serialized}` : "";
+}
+
 function buildUrl(baseUrl: string, path: string, query?: ApiQuery): string {
+  const normalizedPath = path.replace(/^\//, "");
+
+  if (baseUrl.startsWith("/")) {
+    // Relative base (the same-origin BFF path, e.g. "/api/agent" — see
+    // `config.ts`). `new URL()` requires an absolute base and throws on a
+    // relative one, so build the string directly instead; this also keeps
+    // the request same-origin regardless of how/where the app is hosted,
+    // rather than resolving against a guessed origin.
+    const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+    return `${normalizedBase}${normalizedPath}${appendQueryString(query)}`;
+  }
+
   const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-  const url = new URL(path.replace(/^\//, ""), normalizedBase);
+  const url = new URL(normalizedPath, normalizedBase);
   if (query) {
     for (const [key, value] of Object.entries(query)) {
       if (value !== undefined) {
