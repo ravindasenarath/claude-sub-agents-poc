@@ -3,11 +3,6 @@ spring:
     name: property-listing-platform
 
   # PostgreSQL connection pool (ADR-0001: PostgreSQL is the primary datastore).
-  # No schema/entities are wired up yet - that is the DB schema/migrations
-  # follow-up task. Hikari's initialization-fail-timeout is set to -1 so the
-  # application can start even before a database exists/is reachable (e.g.
-  # local dev before `docker compose up db`, or this scaffolding's own tests);
-  # the actuator "db" health indicator will correctly report DOWN in that case.
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:plp}
     username: ${DB_USERNAME:plp}
@@ -20,7 +15,29 @@ spring:
       connection-timeout: 30000
       idle-timeout: 600000
       max-lifetime: 1800000
+      # Kept (not a leftover): -1 makes the Hikari pool bean initialize
+      # lazily instead of eagerly probing a connection at context startup.
+      # With flyway.enabled: true below (the normal/default profile),
+      # Flyway itself still requires a reachable database on startup, so
+      # this alone no longer lets a *real* run start without Postgres -
+      # that part of the original B0.1 rationale is gone now a schema
+      # exists. It is kept because the `test` profile
+      # (application-test.yml) sets flyway.enabled: false so the
+      # context-load smoke test (PlatformApplicationTests) can assert the
+      # module wiring/actuator endpoint without a live database; without
+      # this setting, Hikari's own default eager connection probe would
+      # fail that test's context startup instead.
       initialization-fail-timeout: -1
+
+  # Flyway: forward-only SQL migrations under
+  # src/main/resources/db/migration (see backend/README.md for the naming
+  # convention). Explicit `enabled: true` here documents intent even though
+  # it is Spring Boot's default whenever flyway-core is on the classpath;
+  # the `test` profile (application-test.yml) turns this back off so the
+  # context-load smoke test keeps not requiring a live database.
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
 
 management:
   endpoints:

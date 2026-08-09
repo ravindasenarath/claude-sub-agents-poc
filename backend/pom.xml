@@ -36,9 +36,10 @@
         </dependency>
 
         <!--
-            Plain JDBC + HikariCP connection pool only (no JPA/ORM yet).
-            Entities/repositories/migrations are scaffolded in the "DB schema &
-            migrations" follow-up task; this task only wires the pool (ADR-0001).
+            Plain JDBC + HikariCP connection pool (no JPA/ORM). Entities are
+            hand-written records mapped with JdbcTemplate RowMappers (see
+            agent.internal); schema is versioned with Flyway (below), not an
+            ORM-managed schema.
         -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -50,6 +51,22 @@
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
+        </dependency>
+
+        <!--
+            Flyway: forward-only, versioned SQL migrations under
+            src/main/resources/db/migration (convention documented in
+            backend/README.md). flyway-database-postgresql is required
+            separately from flyway-core as of Flyway 10 for PostgreSQL
+            support.
+        -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
 
         <!--
@@ -74,6 +91,22 @@
             <groupId>com.tngtech.archunit</groupId>
             <artifactId>archunit-junit5</artifactId>
             <version>${archunit.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+            Testcontainers: reusable Postgres harness for persistence tests
+            (see AbstractPostgresIntegrationTest). Versions are managed by
+            spring-boot-starter-parent's testcontainers-bom import.
+        -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

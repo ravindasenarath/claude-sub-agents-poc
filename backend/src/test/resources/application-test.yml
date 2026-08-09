@@ -5,16 +5,28 @@ spring:
   datasource:
     hikari:
       connection-timeout: 1000
+  flyway:
+    # PlatformApplicationTests boots the full Spring context against
+    # whatever `spring.datasource.*` happens to resolve to in this
+    # environment - not a real, migrated database. If Flyway ran here it
+    # would try to connect and migrate on every context load, turning a
+    # context-wiring smoke test into a database test. Real schema/migration
+    # assertions live in the Testcontainers-backed tests under
+    # agent/internal (see AbstractPostgresIntegrationTest), which apply
+    # migrations explicitly against a real, disposable Postgres instance
+    # instead of relying on this profile.
+    enabled: false
 
 management:
   health:
-    # This scaffolding wires up no schema/entities yet (see application.yml),
-    # so the `db` health indicator's status is a function of whatever
-    # PostgreSQL happens to be reachable in the environment the tests run
-    # in, not of anything this test suite is asserting about. Disabling it
-    # here keeps healthEndpointIsUp asserting a real, deterministic
-    # green/red signal (overall status UP) rather than depending on a live
-    # DB - PlatformApplicationTests must not require Postgres to pass.
+    # This scaffolding wires up no live DB for the smoke-test context (see
+    # the flyway.enabled note above), so the `db` health indicator's status
+    # is a function of whatever PostgreSQL happens to be reachable in the
+    # environment the tests run in, not of anything this test suite is
+    # asserting about. Disabling it here keeps healthEndpointIsUp asserting
+    # a real, deterministic green/red signal (overall status UP) rather
+    # than depending on a live DB - PlatformApplicationTests must not
+    # require Postgres to pass.
     db:
       enabled: false
 
