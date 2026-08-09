@@ -6,9 +6,11 @@ and [`docs/architecture/module-boundaries.md`](../docs/architecture/module-bound
 
 Started as scaffolding only (task B0.1). Task B0.2a added the first real
 schema/migration and persistence code: the `agent` table and its
-provisioning port (`AgentModuleApi`) - see "Database migrations" below.
-Listing CRUD, auth flows (JWT verification/`AuthProvider`), search, and
-media upload are still not implemented; this structure and its
+provisioning port (`AgentModuleApi`). Task B0.2b (this) added real
+authentication: JWKS-driven JWT verification (`AuthProvider`), the
+`agent-api` guard (`SecurityConfig`, `AgentAuthenticationFilter`), and the
+first endpoint, `GET /api/agent/me` - see "Auth" below. Listing CRUD,
+search, and media upload are still not implemented; this structure and its
 mechanically-enforced module boundary exist so those follow-up tasks have
 a consistent place to land.
 
@@ -17,6 +19,8 @@ a consistent place to land.
 - Java 21, Spring Boot 3.5.16 (Maven, wrapper included: `./mvnw`)
 - `spring-boot-starter-web` - REST controllers (public-api / agent-api)
 - `spring-boot-starter-actuator` - health check (`/actuator/health`)
+- `spring-boot-starter-oauth2-resource-server` - JWKS-driven JWT
+  verification (pulls in `spring-boot-starter-security`; see "Auth" below)
 - `spring-boot-starter-jdbc` + HikariCP + PostgreSQL driver - plain JDBC
   (no JPA/ORM; see "What's deliberately NOT here" below)
 - Flyway (`flyway-core` + `flyway-database-postgresql`) - versioned SQL
@@ -29,10 +33,11 @@ a consistent place to land.
 
 ```
 com.plp.platform
-├── auth/            shared AuthProvider seam (ADR-0002) - interface only
+├── auth/            shared AuthProvider seam (ADR-0002): JwtAuthProvider,
+│                    AuthConfig (JwtDecoder bean), AuthProperties - B0.2b
 ├── agent/
 │   ├── api/         published interface (AgentModuleApi, AgentSummary,
-│   │                AgentStatus - schema + provisioning port; B0.2a)
+│   │                AgentProfile, AgentStatus - B0.2a + B0.2b)
 │   └── internal/    Agent row + JdbcAgentModuleApi (plain JDBC; B0.2a)
 ├── listing/
 │   ├── api/
@@ -43,8 +48,11 @@ com.plp.platform
 ├── search/
 │   ├── api/
 │   └── internal/
-├── publicapi/       unauthenticated read HTTP surface (no controllers yet)
-└── agentapi/        authenticated write HTTP surface (no controllers yet)
+├── publicapi/       unauthenticated read HTTP surface (no controllers yet;
+│                    permitAll + CORS wired in agentapi.SecurityConfig)
+└── agentapi/        authenticated write HTTP surface - SecurityConfig
+                     (the app's single Spring Security config),
+                     AgentAuthenticationFilter, GET /api/agent/me - B0.2b
 ```
 
 Each business module (`agent`, `listing`, `media`, `search`) is split into:
@@ -73,6 +81,10 @@ build if:
 - `publicapi`/`agentapi` reach into any module's `internal` package,
 - the shared `auth` seam depends back on any business module or HTTP
   surface,
+- any OAuth2/JWT library type (Spring Security's `oauth2`/`jwt` packages,
+  or the underlying Nimbus JOSE+JWT library) appears in `agent`, `listing`,
+  `media`, or `search` (B0.2b) - `agentapi`/`publicapi` are exempt, since
+  they legitimately wire Spring Security itself,
 - anything outside a module's `internal` package (or either HTTP surface)
   depends on JDBC/SQL types,
 - anything in `search` - including `search.internal` - depends on JDBC/SQL
@@ -120,11 +132,72 @@ ADR-0004 amendment.
 - **Logging**: console pattern configured; `com.plp.platform` at `INFO`.
 
 For local development, `docker-compose.yml` starts a matching PostgreSQL
-16 instance:
+16 instance (and a mock OIDC issuer - see "Auth" below):
 
 ```
 docker compose up -d
 ```
+
+## Auth
+
+Agent authentication is delegated to a managed identity provider
+(ADR-0002), still undecided at the time of writing. `agent-api` therefore
+verifies plain, standard OIDC/JWT bearer tokens - JWKS-driven signature
+verification plus `iss`/`aud`/`exp` claim checks (`auth.AuthConfig`,
+`auth.JwtAuthProvider`) - rather than any vendor SDK, so swapping the
+concrete provider later only means changing config, not code.
+
+**Config** (`auth.*` in `application.yml`, env-var driven like the `DB_*`
+datasource vars):
+
+| Property | Env var | Default | Meaning |
+|---|---|---|---|
+| `auth.issuer-uri` | `AUTH_ISSUER_URI` | `http://localhost:8081/default` | expected `iss` claim (plain match, not OIDC discovery - see `AuthProperties` javadoc for why) |
+| `auth.audience` | `AUTH_AUDIENCE` | `plp-agent-api` | expected `aud` claim (token must include it) |
+| `auth.jwk-set-uri` | `AUTH_JWK_SET_URI` | `http://localhost:8081/default/jwks` | JWKS document URL used for signature verification |
+| `auth.clock-skew-seconds` | `AUTH_CLOCK_SKEW_SECONDS` | `60` | allowed `exp`/`nbf` clock skew; access tokens are assumed short-lived (~15 min) - refreshing is the frontend BFF's job, not this service's |
+
+**Request flow** (`agentapi.AgentAuthenticationFilter`, guarding
+`/api/agent/**` only): verify the bearer token via `AuthProvider` -> resolve
+the verified subject to a local `agent` row via `AgentModuleApi`
+(`getByAuthSubject` first, provisioning only on a miss - not on every
+request, since the common case is a returning agent) -> enforce lifecycle
+status:
+
+- no/invalid/expired/wrong-`iss`/wrong-`aud` token -> `401`
+- `agent.status = DISABLED` -> `403 {"code": "AGENT_DISABLED"}`
+- `agent.status = PENDING_APPROVAL` -> allowed through (may use draft-only
+  endpoints; the publish gate is enforced later, in the `listing` domain
+  layer, per the ADR-0002 amendment - nothing to enforce at this edge)
+- `agent.status = ACTIVE` -> allowed through
+
+**Local dev / CI mock issuer.** The concrete identity provider is still
+undecided, so nothing here depends on a live vendor:
+
+- **Local dev** (manual, interactive login): `docker-compose.yml`'s
+  `mock-oidc` service (`ghcr.io/navikt/mock-oauth2-server`) serves a real
+  JWKS endpoint at the config defaults above. Open
+  `http://localhost:8081/default/debugger` to mint a token (set the
+  audience claim to match `AUTH_AUDIENCE`).
+- **Tests/CI** (`./mvnw verify`, no Docker networking beyond what
+  Testcontainers already needs for Postgres): `support.MockOidcIssuer`
+  generates an RSA keypair in-process and serves its JWKS document from an
+  embedded loopback HTTP server, so `AuthConfig`'s real
+  `NimbusJwtDecoder.withJwkSetUri` path is exercised end-to-end without any
+  external dependency. See `AgentApiSecurityIntegrationTest` (no DB
+  required - JWT verification outcomes, the public/actuator regression,
+  CORS) and `AgentApiEndpointIntegrationTest` (Testcontainers Postgres
+  required - principal -> agent resolution/provisioning, lifecycle status
+  enforcement, `GET /api/agent/me`'s response shape).
+
+**CORS.** Per module-boundaries.md's amended "Agent token transport (BFF)"
+section, `agent-api` is called only by the Agent Web Next.js server (a BFF
+proxy), never by browser JavaScript - so it carries **no CORS
+configuration at all**. Only `public-api` gets CORS, restricted to
+`PUBLIC_WEB_ORIGIN` (default `http://localhost:3000`), credentials
+disabled. Both are wired in `agentapi.SecurityConfig` - see its javadoc for
+why introducing Spring Security means this one file also has to un-secure
+`public-api`/actuator back to anonymous, not just secure `agent-api`.
 
 ## Database migrations
 
@@ -159,15 +232,17 @@ automatically on application startup (`spring.flyway`, `application.yml`).
   module's `internal` package. `agent` (B0.2a) is the first module with a
   real table; `listing`/`media`/`search` schema/migrations remain future
   tasks.
-- No Spring Security / JWT verification / `AuthProvider` implementation -
-  that's the "auth integration" follow-up task (B0.2b, blocked on B0.2a).
-  Only the `AuthProvider` interface seam (ADR-0002) is scaffolded, and
-  nothing calls `AgentModuleApi#provisionOnFirstLogin` yet.
 - No object-storage client (S3-compatible) wiring - that's the "object
   storage seam" follow-up task. Only the `media.api` package is reserved.
-- No controllers in `publicapi`/`agentapi`, no listing CRUD, no search
-  filtering, no image upload orchestration - all business logic beyond the
-  `agent` schema/provisioning port is out of scope here.
+- No listing CRUD, no search filtering, no image upload orchestration - all
+  business logic beyond the `agent` schema/provisioning port and
+  `GET /api/agent/me` (B0.2b) is out of scope here.
+- No agent profile *editing* endpoint (FR14) and no `getPublicContact`
+  (FR15, public listing detail) - both explicitly deferred past B0.2b.
+- No ownership/authorization (NFR2) checks - no listings exist yet; that's
+  the `listing` module's job once it exists (module-boundaries.md rule 3).
+- No role/admin modeling (requirements section 2, stretch, out of v1 core
+  scope).
 
 ## Running
 
@@ -190,15 +265,28 @@ integration-test phase/plugin configured.)
 
 Runs:
 
-- the ArchUnit boundary rules,
+- the ArchUnit boundary rules (including, since B0.2b, that no OAuth2/JWT
+  library type leaks into `agent`/`listing`/`media`/`search` -
+  `ModuleBoundaryTest#authLibraryTypesStayOutOfBusinessModules`),
 - a smoke test that the Spring context (all modules + config) starts and
   the health endpoint responds (no live PostgreSQL required - the `test`
   profile disables Flyway and the actuator `db` health indicator; see
-  `application-test.yml`), and
-- persistence tests for the `agent` module (schema + `JdbcAgentModuleApi`)
-  against a real, disposable PostgreSQL started via Testcontainers -
-  **these require a working Docker (or compatible) daemon** to be
-  reachable from wherever the tests run, including CI. They do not use
+  `application-test.yml`),
+- `agentapi.AgentApiSecurityIntegrationTest` (B0.2b): JWT verification
+  outcomes (missing/malformed/bad-signature/expired/wrong-issuer/wrong-
+  audience -> 401), the public-api/actuator-health regression, and the
+  agent-api/public-api CORS asymmetry - boots the Spring context but needs
+  no live database, so it runs without Docker,
+- persistence tests for the `agent` module (schema + `JdbcAgentModuleApi`,
+  B0.2a) and `agentapi.AgentApiEndpointIntegrationTest` (B0.2b: `GET
+  /api/agent/me`'s happy path, provisioning-on-first-request, `DISABLED`/
+  `PENDING_APPROVAL`/`ACTIVE` status handling) against a real, disposable
+  PostgreSQL started via Testcontainers - **these require a working Docker
+  (or compatible) daemon** to be reachable from wherever the tests run,
+  including CI. The `agent.internal` ones do not use
   `application.yml`/`application-test.yml` or a Spring context at all: see
   `AbstractPostgresIntegrationTest`, which applies every migration under
-  `db/migration` with Flyway directly against the Testcontainers instance.
+  `db/migration` with Flyway directly against the Testcontainers instance;
+  `AgentApiEndpointIntegrationTest` boots a full `@SpringBootTest` against
+  its own Testcontainers Postgres instead, since it needs the controller
+  and security filter chain wired up too.

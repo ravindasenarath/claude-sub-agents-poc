@@ -1,7 +1,7 @@
 # Local development dependency only (not used in CI/tests - see
 # application.yml: Hikari's initialization-fail-timeout lets the app start
-# without a reachable DB). Matches the default DB_* env vars in
-# src/main/resources/application.yml.
+# without a reachable DB, and the `mock-oidc` note below). Matches the
+# default DB_*/AUTH_* env vars in src/main/resources/application.yml.
 services:
   db:
     image: postgres:16-alpine
@@ -13,6 +13,31 @@ services:
       - "5432:5432"
     volumes:
       - plp-db-data:/var/lib/postgresql/data
+
+  # Mock OIDC/JWKS issuer for manual local dev (ADR-0002, B0.2b): the
+  # concrete identity provider is still undecided, so this stands in for
+  # one when running `./mvnw spring-boot:run` locally, letting you mint a
+  # real, JWKS-verifiable access token for /api/agent/** without a live
+  # vendor account. Matches this service's default AUTH_* env vars
+  # (application.yml): issuer http://localhost:8081/default, JWKS at
+  # http://localhost:8081/default/jwks.
+  #
+  # NOT used in CI/tests - integration tests spin up their own short-lived
+  # issuer in-process (a locally-generated RSA keypair serving a static
+  # JWKS document, see backend/src/test/java/.../support/MockOidcIssuer.java
+  # and backend/README.md "Auth: local dev / CI") so `./mvnw verify` has no
+  # dependency on this container or on Docker networking at all beyond the
+  # already-established Testcontainers Postgres usage.
+  #
+  # To mint a token: open http://localhost:8081/default/debugger, sign in
+  # with any username, and set the audience claim to match
+  # AUTH_AUDIENCE (default: plp-agent-api) before issuing the token.
+  mock-oidc:
+    image: ghcr.io/navikt/mock-oauth2-server:6.0.0
+    environment:
+      SERVER_PORT: "8081"
+    ports:
+      - "8081:8081"
 
 volumes:
   plp-db-data:

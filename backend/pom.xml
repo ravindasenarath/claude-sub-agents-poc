@@ -36,6 +36,22 @@
         </dependency>
 
         <!--
+            Spring Security OAuth2 Resource Server: JWKS-driven bearer-token
+            verification for agent-api (ADR-0002, B0.2b). Brings in
+            spring-boot-starter-security (auto-secures every endpoint by
+            default - see agentapi.SecurityConfig for the explicit
+            permit/authenticate rules that override that default) and
+            spring-security-oauth2-jose (NimbusJwtDecoder). No vendor IdP
+            SDK: only standard OIDC/JWT types are used, and only inside the
+            `auth` seam (module-boundaries.md rule 4;
+            ModuleBoundaryTest#authLibraryTypesStayOutOfBusinessModules).
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+
+        <!--
             Plain JDBC + HikariCP connection pool (no JPA/ORM). Entities are
             hand-written records mapped with JdbcTemplate RowMappers (see
             agent.internal); schema is versioned with Flyway (below), not an
