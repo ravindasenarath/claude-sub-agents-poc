@@ -133,8 +133,13 @@ public final class MockOidcIssuer implements AutoCloseable {
 
     private static HttpServer startJwksServer(RSAKey signingKey) {
         try {
+            // JWKSet#toJSONObject() returns a plain java.util.Map, so
+            // .toString() on it produces Map's "{key=value}" debug format -
+            // not valid JSON - which NimbusJwtDecoder's JWKS parser then
+            // rejects ("Malformed Jwk set" / "Invalid JSON object").
+            // JWKSet#toString() serialises to actual JSON directly; use
+            // that instead.
             byte[] jwksBody = new JWKSet(signingKey.toPublicJWK())
-                    .toJSONObject()
                     .toString()
                     .getBytes(StandardCharsets.UTF_8);
 
