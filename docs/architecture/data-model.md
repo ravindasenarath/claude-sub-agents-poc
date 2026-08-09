@@ -24,12 +24,22 @@ within these constraints.
 | name | text, not null | FR14 |
 | agency_name | text | FR14 |
 | phone | text | FR14 / contact (FR15) |
-| contact_email | text | FR14 / contact (FR15) |
+| contact_email | text, not null | FR14 / contact (FR15); defaults to IdP login email at provisioning (stakeholder decision) |
 | profile_photo_key | text, nullable | object-storage key (ADR-0003), optional |
-| created_at | timestamptz, not null | |
+| status | enum: `PENDING_APPROVAL`, `ACTIVE`, `DISABLED`, not null, default `PENDING_APPROVAL` | lifecycle gating (ADR-0002 amendment); only `ACTIVE` may publish |
+| approved_at | timestamptz, nullable | audit: when moved to `ACTIVE` |
+| disabled_at | timestamptz, nullable | audit: when moved to `DISABLED` |
+| created_at | timestamptz, not null | NFR7 |
+| updated_at | timestamptz, not null | NFR7; profile is editable post-provisioning |
 
-Notes: local `agent` row is the authorization source of truth; provisioned on first
-login. Identity/credentials live in the IdP, not here.
+Notes: Local `agent` row is the authorization source of truth; provisioned on first login
+from token claims (`sub`, `email`, `name`) with `status = PENDING_APPROVAL`.
+`agency_name`/`phone` stay nullable — completed later via profile edit, not a forced
+onboarding gate. Identity/credentials live in the IdP, not here.
+
+`status` is the single source of truth for lifecycle state; `approved_at`/`disabled_at`
+are audit timestamps only and must never be read as lifecycle signals (no competing
+boolean flag alongside them).
 
 ## listing
 
