@@ -1,6 +1,7 @@
 package com.plp.platform.agent.internal;
 
 import com.plp.platform.agent.api.AgentModuleApi;
+import com.plp.platform.agent.api.AgentProfile;
 import com.plp.platform.agent.api.AgentStatus;
 import com.plp.platform.agent.api.AgentSummary;
 import java.sql.ResultSet;
@@ -33,6 +34,11 @@ class JdbcAgentModuleApi implements AgentModuleApi {
     @Override
     public Optional<AgentSummary> getByAuthSubject(String authSubject) {
         return findByAuthSubject(authSubject).map(JdbcAgentModuleApi::toSummary);
+    }
+
+    @Override
+    public Optional<AgentProfile> getProfileByAuthSubject(String authSubject) {
+        return findByAuthSubject(authSubject).map(JdbcAgentModuleApi::toProfile);
     }
 
     @Override
@@ -116,6 +122,11 @@ class JdbcAgentModuleApi implements AgentModuleApi {
 
     private static AgentSummary toSummary(Agent agent) {
         return new AgentSummary(agent.id(), agent.status());
+    }
+
+    private static AgentProfile toProfile(Agent agent) {
+        return new AgentProfile(
+                agent.id(), agent.name(), agent.contactEmail(), agent.status(), agent.agencyName(), agent.phone());
     }
 
     private static Agent mapRow(ResultSet rs, int rowNum) throws SQLException {

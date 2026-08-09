@@ -39,6 +39,27 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+# Agent authentication (ADR-0002, B0.2b): JWKS-driven JWT verification.
+# The concrete identity provider is still undecided, so these stay plain
+# env-var overrides (same convention as the DB_* datasource vars above)
+# rather than a vendor-specific default. Local dev / CI use a mock issuer
+# instead of a live vendor - see backend/README.md "Auth: local dev / CI"
+# and backend/docker-compose.yml.
+auth:
+  issuer-uri: ${AUTH_ISSUER_URI:http://localhost:8081/default}
+  audience: ${AUTH_AUDIENCE:plp-agent-api}
+  jwk-set-uri: ${AUTH_JWK_SET_URI:http://localhost:8081/default/jwks}
+  # Access tokens are assumed short-lived (~15 min, ADR-0002); this only
+  # covers clock drift between this service and the issuer, not
+  # long-lived-token handling (that's the frontend BFF's refresh job).
+  clock-skew-seconds: ${AUTH_CLOCK_SKEW_SECONDS:60}
+
+# CORS for public-api only (module-boundaries.md: agent-api gets none at
+# all - see agentapi.SecurityConfig). Defaults to the Next.js dev server.
+public-api:
+  cors:
+    allowed-origin: ${PUBLIC_WEB_ORIGIN:http://localhost:3000}
+
 management:
   endpoints:
     web:

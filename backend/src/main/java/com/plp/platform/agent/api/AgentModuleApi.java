@@ -8,9 +8,10 @@ import java.util.Optional;
  * may depend on this package only - never on {@code agent.internal}.
  *
  * <p>Implemented by {@code agent.internal.JdbcAgentModuleApi} (plain JDBC,
- * no JPA/Hibernate). This task (B0.2a) ships the persistence port only; no
- * HTTP endpoint or auth/JWT wiring calls it yet (that is B0.2b, blocked on
- * this task).
+ * no JPA/Hibernate). B0.2a shipped the persistence port
+ * ({@link #getByAuthSubject}/{@link #provisionOnFirstLogin}); B0.2b wires
+ * real auth on top of it and adds {@link #getProfileByAuthSubject} for the
+ * {@code GET /api/agent/me} endpoint.
  */
 public interface AgentModuleApi {
 
@@ -24,6 +25,18 @@ public interface AgentModuleApi {
      *     been called for it)
      */
     Optional<AgentSummary> getByAuthSubject(String authSubject);
+
+    /**
+     * Looks up the full profile (FR14) of the local agent record for a
+     * verified identity-provider subject id - the fuller counterpart to
+     * {@link #getByAuthSubject}, added for {@code GET /api/agent/me}
+     * (B0.2b).
+     *
+     * @param authSubject the stable subject id from the managed IdP
+     * @return the agent's profile, or empty if no local record exists yet
+     *     for this subject
+     */
+    Optional<AgentProfile> getProfileByAuthSubject(String authSubject);
 
     /**
      * Idempotently provisions the local {@code agent} record the first

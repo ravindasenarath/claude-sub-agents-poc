@@ -163,6 +163,30 @@ class ModuleBoundaryTest {
     }
 
     // ---------------------------------------------------------------
+    // Auth library confinement (ADR-0002, module-boundaries.md rule 4,
+    // task B0.2b): no OAuth2/JWT library type (Spring Security's
+    // oauth2/jwt packages, or the underlying Nimbus JOSE+JWT library) may
+    // appear in the business modules whose isolation from the identity
+    // provider ADR-0002 exists to protect. `agent.api#AuthProvider.
+    // Principal` carries only plain claim values (String) across the seam
+    // for exactly this reason. `agentapi`/`publicapi` are HTTP surfaces,
+    // not business modules - they legitimately wire Spring Security itself
+    // (`SecurityConfig`'s permit/authenticated rules, and
+    // `AgentAuthenticationFilter`, which is the actual caller of the
+    // JWT-verifying `auth.AuthProvider` - `SecurityConfig` itself never
+    // touches JWT verification) and are not covered by this rule.
+    // ---------------------------------------------------------------
+
+    @Test
+    void authLibraryTypesStayOutOfBusinessModules() {
+        noClasses()
+                .that().resideInAnyPackage("..agent..", "..listing..", "..media..", "..search..")
+                .should().dependOnClassesThat()
+                .resideInAnyPackage("org.springframework.security.oauth2..", "com.nimbusds..")
+                .check(CLASSES);
+    }
+
+    // ---------------------------------------------------------------
     // JDBC confinement: DB access must stay inside each module's
     // `internal` layer. This is the mechanical enforcement point ahead
     // of the DB schema/migrations task - nothing in a module's `api`

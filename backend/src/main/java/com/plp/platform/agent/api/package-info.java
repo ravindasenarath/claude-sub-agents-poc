@@ -11,13 +11,16 @@
  *   <li>{@link com.plp.platform.agent.api.AgentModuleApi#provisionOnFirstLogin} -
  *       idempotently create the local agent row the first time a new
  *       subject authenticates (ADR-0002)</li>
+ *   <li>{@link com.plp.platform.agent.api.AgentModuleApi#getProfileByAuthSubject} -
+ *       the fuller profile (FR14) backing {@code GET /api/agent/me}
+ *       (B0.2b)</li>
  * </ul>
  *
  * <p>{@code getPublicContact(agentId)} (name + contact for listing detail
  * pages, FR15) is not yet part of this interface - it is deferred to
- * whichever future task first needs it (listing detail read path), to keep
- * this task (B0.2a: schema + provisioning port) scoped to what B0.2b (auth
- * integration) and the future listing-status gate need.
+ * whichever future task first needs it (listing detail read path); B0.2b
+ * (auth integration + {@code GET /api/agent/me}) explicitly does not add
+ * it either, per the tech lead's B0.2a review.
  *
  * <p>{@link com.plp.platform.agent.api.AgentModuleApi} is implemented by
  * {@code agent.internal.JdbcAgentModuleApi} (plain JDBC, no JPA/Hibernate).

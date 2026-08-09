@@ -15,5 +15,12 @@
  *
  * <p>No controllers are added yet - endpoint implementation is out of scope
  * for this scaffolding task (see downstream feature tasks).
+ *
+ * <p>Since B0.2b, {@code /api/public/**} is explicitly {@code permitAll}'d
+ * and CORS-enabled (restricted to the web origin, credentials disabled) in
+ * {@link com.plp.platform.agentapi.SecurityConfig} - the app's single
+ * Spring Security configuration (see that class's javadoc for why it lives
+ * in {@code agentapi} rather than here or a separate package). This package
+ * itself has no Spring Security dependency.
  */
 package com.plp.platform.publicapi;
