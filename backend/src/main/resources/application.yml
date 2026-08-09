@@ -1,0 +1,47 @@
+spring:
+  application:
+    name: property-listing-platform
+
+  # PostgreSQL connection pool (ADR-0001: PostgreSQL is the primary datastore).
+  # No schema/entities are wired up yet - that is the DB schema/migrations
+  # follow-up task. Hikari's initialization-fail-timeout is set to -1 so the
+  # application can start even before a database exists/is reachable (e.g.
+  # local dev before `docker compose up db`, or this scaffolding's own tests);
+  # the actuator "db" health indicator will correctly report DOWN in that case.
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:plp}
+    username: ${DB_USERNAME:plp}
+    password: ${DB_PASSWORD:plp}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: plp-hikari-pool
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      initialization-fail-timeout: -1
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  health:
+    defaults:
+      enabled: true
+
+server:
+  port: ${SERVER_PORT:8080}
+
+logging:
+  level:
+    root: INFO
+    com.plp.platform: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} %-5level [%thread] %logger{36} - %msg%n"
