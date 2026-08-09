@@ -12,11 +12,14 @@ import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 
 /**
- * Builds the single, JWKS-backed {@link JwtDecoder} shared by
- * {@link JwtAuthProvider} (the {@link AuthProvider} implementation) and
- * {@code agentapi.SecurityConfig}'s Spring Security filter chain, so both
- * verify tokens the exact same way (signature + {@code iss} + {@code aud} +
- * {@code exp}, per ADR-0002 and task B0.2b's acceptance criteria).
+ * Builds the JWKS-backed {@link JwtDecoder} used by {@link JwtAuthProvider}
+ * (the {@link AuthProvider} implementation, and its only consumer) to verify
+ * tokens (signature + {@code iss} + {@code aud} + {@code exp}, per ADR-0002
+ * and task B0.2b's acceptance criteria). {@code agentapi.SecurityConfig}
+ * never touches this bean or calls {@code JwtAuthProvider} directly - it
+ * only declares which paths require an authenticated principal; the actual
+ * verification call is made by {@code agentapi.AgentAuthenticationFilter},
+ * via {@link AuthProvider#verify}.
  *
  * <p>{@code NimbusJwtDecoder.withJwkSetUri(...)} fetches/caches the JWKS
  * document lazily on first use - constructing this bean does not require

@@ -30,6 +30,10 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  * <ul>
  *   <li>{@code /api/public/**}, {@code /actuator/**}: anonymous
  *       (module-boundaries.md: public reads need no auth, NFR1).
+ *   <li>{@code /error}: also anonymous - not a real endpoint, but the
+ *       container's internal forward target for rendering any request's
+ *       error response (see the inline comment on that rule below for why
+ *       this must stay permitted).
  *   <li>{@code /api/agent/**}: requires the {@link AgentAuthenticationFilter}
  *       to have set an authenticated principal (401/403 otherwise - see
  *       that class).
@@ -66,6 +70,23 @@ class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/api/public/**", "/actuator/**")
+                        .permitAll()
+                        // Spring Boot's BasicErrorController is reached via an
+                        // internal container forward to "/error" *after* the
+                        // original request already ran the security chain once
+                        // (e.g. a permitAll /api/public/** request with no
+                        // matching handler completes 404, then the container
+                        // forwards to /error to render it). That forwarded
+                        // request re-enters this same chain under the "/error"
+                        // path, which matches none of the rules above - without
+                        // this line it falls through to anyRequest().denyAll()
+                        // and Http403ForbiddenEntryPoint overwrites the
+                        // original 404 with 403, silently masking the real
+                        // status of *any* unmapped request app-wide. Permitting
+                        // it here does not loosen authentication for the
+                        // original request - that decision was already made
+                        // before the forward happened.
+                        .requestMatchers("/error")
                         .permitAll()
                         .requestMatchers("/api/agent/**")
                         .authenticated()

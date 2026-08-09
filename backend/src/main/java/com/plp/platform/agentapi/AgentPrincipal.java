@@ -10,9 +10,10 @@ import com.plp.platform.auth.AuthProvider.Principal;
  * delegated, authZ/lifecycle gating is ours).
  *
  * <p>This is the {@linkplain org.springframework.security.core.Authentication#getPrincipal()
- * Authentication principal} set by {@link AgentJwtAuthenticationConverter}
- * once a JWT has passed signature/{@code iss}/{@code aud}/{@code exp}
- * verification; controllers under {@code agentapi} read it via
+ * Authentication principal} set by {@link AgentAuthenticationFilter} once a
+ * bearer token has passed verification (via {@code auth.AuthProvider},
+ * signature/{@code iss}/{@code aud}/{@code exp}) and been resolved to a
+ * local {@code agent} record; controllers under {@code agentapi} read it via
  * {@code @AuthenticationPrincipal}.
  */
 record AgentPrincipal(Principal principal, AgentSummary agent) {

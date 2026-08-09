@@ -171,8 +171,10 @@ class ModuleBoundaryTest {
     // Principal` carries only plain claim values (String) across the seam
     // for exactly this reason. `agentapi`/`publicapi` are HTTP surfaces,
     // not business modules - they legitimately wire Spring Security itself
-    // (SecurityConfig, the JWT-authenticated filter) and are not covered by
-    // this rule.
+    // (`SecurityConfig`'s permit/authenticated rules, and
+    // `AgentAuthenticationFilter`, which is the actual caller of the
+    // JWT-verifying `auth.AuthProvider` - `SecurityConfig` itself never
+    // touches JWT verification) and are not covered by this rule.
     // ---------------------------------------------------------------
 
     @Test

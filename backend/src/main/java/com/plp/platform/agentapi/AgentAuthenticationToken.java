@@ -10,9 +10,11 @@ import org.springframework.security.authentication.AbstractAuthenticationToken;
  * never a raw {@code org.springframework.security.oauth2.jwt.Jwt}.
  *
  * <p>No authorities/roles are granted (role/admin modeling is out of scope
- * for v1, requirements section 2) - {@link AgentAuthorizationManager} makes
- * the sole access decision (blocking {@code DISABLED} agents) directly off
- * {@link AgentPrincipal#agent()}, not off granted authorities.
+ * for v1, requirements section 2) - {@link AgentAuthenticationFilter} makes
+ * the sole access decision (blocking {@code DISABLED} agents, see its class
+ * javadoc) directly off {@link AgentPrincipal#agent()} before this token is
+ * ever set as the request's {@code Authentication}, not off granted
+ * authorities.
  */
 class AgentAuthenticationToken extends AbstractAuthenticationToken {
 

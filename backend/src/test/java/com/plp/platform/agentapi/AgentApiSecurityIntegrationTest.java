@@ -129,10 +129,16 @@ class AgentApiSecurityIntegrationTest {
                 restTemplate.getForEntity(url("/api/public/anything"), String.class);
 
         // No controller exists under /api/public yet (business endpoints
-        // are future work) so this 404s - the point of this regression
-        // test is that it is *not* 401: Spring Security's permitAll rule
-        // for /api/public/** must not have been accidentally tightened.
-        assertThat(response.getStatusCode()).isNotEqualTo(HttpStatus.UNAUTHORIZED);
+        // are future work) so a *permitAll*, correctly-anonymous request
+        // always 404s here - asserting that exact status (rather than only
+        // isNotEqualTo(UNAUTHORIZED)) matters: with no explicit
+        // AuthenticationEntryPoint configured on this chain, Spring
+        // Security's ExceptionTranslationFilter defaults to
+        // Http403ForbiddenEntryPoint, so if the permitAll rule for
+        // /api/public/** were ever accidentally deleted/tightened the
+        // response would become 403, not 401 - and isNotEqualTo(UNAUTHORIZED)
+        // alone would not catch that regression.
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test
