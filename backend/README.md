@@ -65,7 +65,12 @@ build if:
 - a business module depends on either HTTP surface (`publicapi`/`agentapi`),
 - `publicapi`/`agentapi` reach into any module's `internal` package,
 - the shared `auth` seam depends back on any business module or HTTP
-  surface.
+  surface,
+- anything outside a module's `internal` package (or either HTTP surface)
+  depends on JDBC/SQL types,
+- anything in `search` - including `search.internal` - depends on JDBC/SQL
+  types at all (search has no database access of its own; see the
+  "Resolved" note below).
 
 Because there is no real code in the modules yet, most of these rules are
 currently vacuously true - they exist so that the first real violation (a
@@ -73,19 +78,18 @@ future PR that adds an entity in the wrong place, or a controller that
 queries another module's repository) fails CI immediately instead of
 depending on code review to catch it.
 
-**Open question flagged for the tech lead / DB schema task:** the
-`module-boundaries.md` component diagram shows `search` with its own direct
-line to PostgreSQL, alongside `agent`/`listing`/`media`, which reads as "the
-`search` module may read the `listing` table directly for index-backed
-filtering" rather than "search must call `listing`'s Java API per row" -
-that's a reasonable read-side exception to the "no cross-module DB access"
-rule for performance (ADR-0004), but it isn't spelled out as an explicit
-exception. `ModuleBoundaryTest` currently only restricts `search`'s
-*Java-level* dependency to `listing.api`; it does not (and structurally
-cannot, until entities exist) constrain which physical tables a future
-`search.internal` repository queries. Recommend confirming this explicitly
-(e.g. an ADR-0004 amendment) before the DB schema/migrations task implements
-`search`'s persistence layer.
+**Resolved: `search` has no direct database access.** `search` may not read
+the `listing` table (or any table) directly - it must go through
+`listing.api`'s `findPublished(ListingQuery)` query port. `listing.internal`
+implements that port as one index-backed SQL statement filtering
+`status = 'PUBLISHED'`; DB-native filtering and indexing for published
+listings (ADR-0004) live in `listing.internal`, not in a separate
+`search`-owned table/index path. This is mechanically enforced -
+`ModuleBoundaryTest#searchModuleNeverDependsOnJdbcOrSql` forbids anything in
+`search`, including `search.internal`, from depending on
+`org.springframework.jdbc`, `javax.sql`, or `java.sql` at all, so `search`
+issues no SQL of its own. See `module-boundaries.md` rule 6 and the
+ADR-0004 amendment.
 
 ## Configuration
 

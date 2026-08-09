@@ -186,4 +186,22 @@ class ModuleBoundaryTest {
                 .resideInAnyPackage("org.springframework.jdbc..", "javax.sql..", "java.sql..")
                 .check(CLASSES);
     }
+
+    // ---------------------------------------------------------------
+    // Search/DB-access decision: search has no table of its own and no
+    // JDBC access at all, even inside its own `internal` package - it must
+    // read listing data exclusively through listing.api#findPublished.
+    // `onlyModuleInternalsMayDependOnJdbcOrSql` above permits any module's
+    // `internal` package (including search.internal) to use JDBC, which
+    // does not enforce this narrower, search-specific rule.
+    // ---------------------------------------------------------------
+
+    @Test
+    void searchModuleNeverDependsOnJdbcOrSql() {
+        noClasses()
+                .that().resideInAPackage("..search..")
+                .should().dependOnClassesThat()
+                .resideInAnyPackage("org.springframework.jdbc..", "javax.sql..", "java.sql..")
+                .check(CLASSES);
+    }
 }
