@@ -62,3 +62,23 @@ ids. This ownership rule is enforced in the domain layer, not just the API layer
 
 - Need for agency-level org accounts / role hierarchies beyond a flat agent role.
 - Regulatory/data-residency requirements that constrain provider choice.
+
+## Amendment (2026-08-09): token transport + agent lifecycle status
+
+Two clarifications resolved before implementation:
+
+1. **Token transport.** The Next.js Agent Web server is the confidential OIDC client and
+   holds the token set in an httpOnly session cookie; it proxies `agent-api` calls and
+   attaches the bearer token server-side. Browser JS never sees a token. See
+   module-boundaries.md, "Agent token transport (BFF)" + rule 7.
+2. **Signup is self-service with pending approval.** Agents self-register at the IdP; the
+   local `agent` record is provisioned on first login (unchanged) with
+   `status = PENDING_APPROVAL`. Authentication succeeding does **not** imply publish
+   rights. A `PENDING_APPROVAL` agent may log in and save `DRAFT` listings only;
+   transitions to `PUBLISHED` are rejected in the `listing` domain layer (not just at the
+   API edge, per module-boundaries rule 3) based on `agent.status`. There is no admin UI in
+   v1; approval is a manual DB/ops action. `DISABLED` agents are rejected at the
+   `agent-api` edge with 403.
+
+This keeps ADR-0002's core intact: authN delegated, authZ (including lifecycle gating)
+owned by us.
