@@ -79,4 +79,30 @@ describe("createApiClient", () => {
     const result = await client.delete("/listings/1", { token: "test-token" });
     expect(result).toBeUndefined();
   });
+
+  // Regression test (F0.2): `buildUrl` used to do `new URL(path, base)`,
+  // which throws on a relative base like the BFF's same-origin proxy path
+  // ("/api/agent" — see lib/api/config.ts's `agentApiBasePath`) because
+  // `URL` requires an absolute base.
+  it("builds a relative URL without throwing when the base path is relative", async () => {
+    const fetchMock = mockFetchOnce({ json: async () => ({ id: "1" }) });
+    const client = createApiClient("/api/agent");
+
+    await expect(
+      client.get("/me", { query: { verbose: true, unset: undefined } }),
+    ).resolves.toEqual({ id: "1" });
+
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toBe("/api/agent/me?verbose=true");
+  });
+
+  it("keeps a relative base path stable regardless of a leading/trailing slash", async () => {
+    const fetchMock = mockFetchOnce({ json: async () => ({}) });
+    const client = createApiClient("/api/agent/");
+
+    await client.get("me");
+
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toBe("/api/agent/me");
+  });
 });
