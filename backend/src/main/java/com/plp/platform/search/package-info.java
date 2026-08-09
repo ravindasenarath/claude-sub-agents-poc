@@ -13,20 +13,22 @@
  *
  * <p><b>Architecture decision:</b> {@code search} does not, and may never,
  * issue SQL against the {@code listing} table directly - resolved by the
- * tech lead (ADR-0004 amendment pending). Instead, {@code listing.api}
- * publishes a read-only query port,
+ * tech lead (ADR-0004 amendment). Instead, {@code listing.api} publishes a
+ * read-only query port,
  * {@link com.plp.platform.listing.api.ListingModuleApi#findPublished},
  * which {@code listing.internal} implements as one index-backed SQL
  * statement filtering {@code status = 'PUBLISHED'}. {@code search} (via
  * {@link com.plp.platform.search.api.SearchService}) owns validation,
  * suburb/state normalization, sort whitelist, and pagination/cursor policy,
  * and composes results by calling into {@code listing.api} - it issues no
- * SQL of its own. Note {@code ModuleBoundaryTest}'s JDBC-confinement rule
- * only mechanically enforces "no JDBC/SQL outside any {@code internal}
- * package"; it does not (and structurally cannot) forbid
- * {@code search.internal} itself from depending on JDBC, so staying off
- * the {@code listing} table is a policy this module's implementer must
- * still uphold by design, not something ArchUnit alone can catch.
+ * SQL of its own. This is mechanically enforced, not just a design
+ * convention: {@code ModuleBoundaryTest#searchModuleNeverDependsOnJdbcOrSql}
+ * forbids anything in {@code search} - including {@code search.internal} -
+ * from depending on {@code org.springframework.jdbc}, {@code javax.sql}, or
+ * {@code java.sql} at all, closing the gap the module-wide
+ * {@code onlyModuleInternalsMayDependOnJdbcOrSql} rule leaves open (that
+ * rule permits any module's {@code internal} package, including
+ * {@code search.internal}, to use JDBC).
  *
  * <p>Published interface: {@link com.plp.platform.search.api}.
  * Implementation detail: {@link com.plp.platform.search.internal}.
